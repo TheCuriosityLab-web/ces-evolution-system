@@ -1,0 +1,61 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: #07080A;
+    color: #F4F6F8;
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #0E1116;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 240, 255, 0.2);
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 240, 255, 0.4);
+  }
+}
+
+@layer utilities {
+  .font-heading { font-family: 'Space Grotesk', sans-serif; }
+  .font-mono    { font-family: 'IBM Plex Mono', monospace; }
+  .font-body    { font-family: 'Inter', sans-serif; }
+
+  .ces-card {
+    background: #0E1116;
+    border: 1px solid rgba(0, 240, 255, 0.08);
+    border-radius: 0.75rem;
+  }
+
+  .ces-card:hover {
+    box-shadow: 0 0 16px rgba(0, 240, 255, 0.18);
+  }
+
+  .ces-glow {
+    box-shadow: 0 0 16px rgba(0, 240, 255, 0.18);
+  }
+
+  .ces-glow-lg {
+    box-shadow: 0 0 32px rgba(0, 240, 255, 0.25);
+  }
+}
