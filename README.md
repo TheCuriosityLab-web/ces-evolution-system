@@ -2,7 +2,7 @@
 
 Self-evolving artificial intelligence — open source and free forever.
 
-**Live demo:** https://ces-evolution-system-52se-r5x3m33ir.vercel.app
+**Live demo:** https://ces-evolution-system.netlify.app/
 
 Built with: React, TypeScript, Three.js, GSAP, Recharts, Zustand
 
