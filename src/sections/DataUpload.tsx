@@ -6,15 +6,10 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
-import { FeatureLock } from '@/components/FeatureLock'
-import { PricingModal } from '@/components/PricingModal'
 
 const MONO: React.CSSProperties = { fontFamily: "'IBM Plex Mono', monospace" }
 
 export function DataUpload() {
-  const user = useEvolutionStore((s) => s.user)
-  const [pricingOpen, setPricingOpen] = useState(false)
-  const isPro = user?.plan === 'pro' || user?.plan === 'team'
   const csvData         = useEvolutionStore((s) => s.csvData)
   const targetColumn    = useEvolutionStore((s) => s.targetColumn)
   const featureColumns  = useEvolutionStore((s) => s.featureColumns)
@@ -70,10 +65,7 @@ export function DataUpload() {
   const preview = csvData?.slice(0, 5) ?? []
 
   return (
-    <>
-    <PricingModal open={pricingOpen} onClose={() => setPricingOpen(false)} />
-    <div className="relative flex flex-col gap-5" style={MONO}>
-      {!isPro && <FeatureLock feature="CSV Upload" onUpgrade={() => setPricingOpen(true)} />}
+    <div className="flex flex-col gap-5" style={MONO}>
 
       {/* Drop zone */}
       <div
@@ -249,6 +241,5 @@ export function DataUpload() {
         </>
       )}
     </div>
-    </>
   )
 }

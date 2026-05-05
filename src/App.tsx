@@ -16,9 +16,8 @@ import { DataUpload }            from '@/sections/DataUpload'
 import { LearningStory }         from '@/sections/LearningStory'
 import { EvolutionActionsProvider } from '@/context/evolutionActions'
 import { useEvolutionStore, selectGenerations, selectStatus, selectUser } from '@/store/evolutionStore'
-import { AuthModal }    from '@/components/AuthModal'
-import { PricingModal } from '@/components/PricingModal'
-import { ExportPanel }  from '@/components/ExportPanel'
+import { AuthModal }   from '@/components/AuthModal'
+import { ExportPanel } from '@/components/ExportPanel'
 import { supabase }     from '@/lib/supabase'
 
 // ─── Toast watcher ────────────────────────────────────────────────────────────
@@ -129,25 +128,43 @@ function Sidebar({ active, onChange }: { active: TabId; onChange: (t: TabId) => 
   )
 }
 
-// ─── Mobile bottom navigation bar ────────────────────────────────────────────
-function MobileBottomNav({ active, onChange }: { active: TabId; onChange: (t: TabId) => void }) {
+// ─── Mobile horizontal tab bar ───────────────────────────────────────────────
+function MobileTabBar({ active, onChange }: { active: TabId; onChange: (t: TabId) => void }) {
   return (
-    <nav className="md:hidden flex items-center justify-around h-14 shrink-0 border-t border-accent/[0.08] bg-bg-secondary">
-      {NAV_ITEMS.map(({ id, icon: Icon, label }) => (
-        <button
-          key={id}
-          onClick={() => onChange(id)}
-          className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1 transition-colors ${
-            active === id ? 'text-accent' : 'text-text-secondary/40'
-          }`}
-        >
-          <Icon className="h-4 w-4" />
-          <span className="font-mono text-[8px] uppercase tracking-widest leading-none">
+    <div
+      className="md:hidden shrink-0"
+      style={{ background: '#0E1116', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+          WebkitOverflowScrolling: 'touch',
+        } as React.CSSProperties}
+      >
+        {NAV_ITEMS.map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => onChange(id)}
+            style={{
+              fontFamily: "'IBM Plex Mono', monospace",
+              fontSize: '12px',
+              padding: '10px 16px',
+              color: active === id ? '#00F0FF' : '#A7B0B7',
+              borderBottom: `2px solid ${active === id ? '#00F0FF' : 'transparent'}`,
+              background: 'transparent',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+              cursor: 'pointer',
+              transition: 'color 0.15s',
+            }}
+          >
             {label}
-          </span>
-        </button>
-      ))}
-    </nav>
+          </button>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -168,10 +185,9 @@ function MobileStatusDot() {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [activeTab,   setActiveTab]   = useState<TabId>('metrics')
-  const [authOpen,    setAuthOpen]    = useState(false)
-  const [pricingOpen, setPricingOpen] = useState(false)
-  const [exportOpen,  setExportOpen]  = useState(false)
+  const [activeTab,  setActiveTab]  = useState<TabId>('metrics')
+  const [authOpen,   setAuthOpen]   = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const { setUser, clearUser } = useEvolutionStore()
 
@@ -218,13 +234,12 @@ export default function App() {
             >
               <Download className="h-3.5 w-3.5" />
             </button>
-            <HeaderAuth onSignIn={() => setAuthOpen(true)} onUpgrade={() => setPricingOpen(true)} />
+            <HeaderAuth onSignIn={() => setAuthOpen(true)} />
           </div>
         </header>
 
-        <AuthModal    open={authOpen}    onClose={() => setAuthOpen(false)} />
-        <PricingModal open={pricingOpen} onClose={() => setPricingOpen(false)} />
-        <ExportPanel  open={exportOpen}  onClose={() => setExportOpen(false)} />
+        <AuthModal   open={authOpen}   onClose={() => setAuthOpen(false)} />
+        <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} />
 
         {/* ── Body ── */}
         <div className="flex flex-1 overflow-hidden">
@@ -234,6 +249,9 @@ export default function App() {
 
           {/* Main area — scrolls on mobile, clips on desktop */}
           <main className="flex flex-col flex-1 min-w-0 overflow-y-auto md:overflow-hidden">
+
+            {/* Mobile horizontal tab bar — sits above hero, hidden on desktop */}
+            <MobileTabBar active={activeTab} onChange={setActiveTab} />
 
             {/* Hero */}
             <div className="px-3 md:px-4 pt-3 md:pt-4 pb-2 md:pb-3 shrink-0">
@@ -247,8 +265,8 @@ export default function App() {
                 onValueChange={(v) => setActiveTab(v as TabId)}
                 className="flex flex-col md:h-full"
               >
-                {/* Horizontally scrollable tab bar on mobile */}
-                <div className="overflow-x-auto mb-3 pb-px">
+                {/* Desktop tab bar — hidden on mobile (MobileTabBar handles it) */}
+                <div className="hidden md:block overflow-x-auto mb-3 pb-px">
                   <TabsList className="flex w-max md:w-auto shrink-0">
                     <TabsTrigger value="metrics">
                       <BarChart2 className="h-3.5 w-3.5 mr-1.5" />
@@ -324,8 +342,6 @@ export default function App() {
           <EvolutionTicker />
         </footer>
 
-        {/* ── Mobile bottom nav ── */}
-        <MobileBottomNav active={activeTab} onChange={setActiveTab} />
 
       </div>
 
@@ -348,7 +364,7 @@ export default function App() {
 }
 
 // ─── Header auth controls ─────────────────────────────────────────────────────
-function HeaderAuth({ onSignIn, onUpgrade }: { onSignIn: () => void; onUpgrade: () => void }) {
+function HeaderAuth({ onSignIn }: { onSignIn: () => void }) {
   const user = useEvolutionStore(selectUser)
 
   if (!user) {
@@ -363,22 +379,9 @@ function HeaderAuth({ onSignIn, onUpgrade }: { onSignIn: () => void; onUpgrade: 
   }
 
   return (
-    <div className="flex items-center gap-2">
-      <span className="hidden md:inline font-mono text-[10px] text-text-secondary/60 max-w-[120px] truncate">
-        {user.email}
-      </span>
-      <span className="font-mono text-[9px] uppercase tracking-widest border rounded px-1.5 py-0.5 text-[#00FF88] border-[#00FF88]/30 bg-[#00FF88]/8">
-        {user.plan}
-      </span>
-      {user.plan === 'free' && (
-        <button
-          onClick={onUpgrade}
-          className="font-mono text-[10px] uppercase tracking-widest px-2 md:px-3 py-1 rounded border border-accent/40 text-accent hover:border-accent hover:shadow-glow transition-all"
-        >
-          Upgrade
-        </button>
-      )}
-    </div>
+    <span className="font-mono text-[10px] text-text-secondary/60 max-w-[140px] truncate hidden md:inline">
+      {user.email}
+    </span>
   )
 }
 

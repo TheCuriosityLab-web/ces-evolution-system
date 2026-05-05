@@ -1,22 +1,12 @@
-import { useState } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { LearningLog }     from './LearningLog'
 import { MutationDNA }     from './MutationDNA'
 import { DataConsumption } from './DataConsumption'
-import { FeatureLock }  from '@/components/FeatureLock'
-import { PricingModal } from '@/components/PricingModal'
-import { useEvolutionStore } from '@/store/evolutionStore'
 
 export function IntelligencePanel() {
-  const user = useEvolutionStore((s) => s.user)
-  const isPro = user?.plan === 'pro' || user?.plan === 'team'
-  const [pricingOpen, setPricingOpen] = useState(false)
-
   return (
-    <>
-    <PricingModal open={pricingOpen} onClose={() => setPricingOpen(false)} />
     <div
-      className="relative flex flex-col h-full"
+      className="flex flex-col h-full"
       style={{
         background:   '#0E1116',
         border:       '1px solid rgba(0,240,255,0.08)',
@@ -24,8 +14,6 @@ export function IntelligencePanel() {
         overflow:     'hidden',
       }}
     >
-      {!isPro && <FeatureLock feature="Intelligence Panel" onUpgrade={() => setPricingOpen(true)} />}
-
       {/* Header */}
       <div
         className="px-4 py-2.5 shrink-0 border-b"
@@ -68,6 +56,5 @@ export function IntelligencePanel() {
         </div>
       </Tabs>
     </div>
-    </>
   )
 }
