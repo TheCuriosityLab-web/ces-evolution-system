@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
-const SITE_URL = 'https://ces-evolution-system-52se-r5x3m33ir.vercel.app'
+const SITE_URL = 'https://ces-evolution-system.netlify.app'
 
 export const supabase = createClient(
   import.meta.env.VITE_SUPABASE_URL,
