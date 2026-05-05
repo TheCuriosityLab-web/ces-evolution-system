@@ -172,16 +172,15 @@ function AgentLeaderboard({ generations }: { generations: GenerationEvent[] }) {
       <TableHeader>
         <TableRow>
           <TableHead className="w-8">#</TableHead>
-          <TableHead>Agent</TableHead>
+          <TableHead className="hidden sm:table-cell">Agent</TableHead>
           <TableHead>Fitness</TableHead>
           <TableHead>Gen</TableHead>
-          <TableHead>Op</TableHead>
+          <TableHead className="hidden sm:table-cell">Op</TableHead>
           <TableHead>Trend</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {top10.map((ev, rank) => {
-          // Sparkline: last 8 fitness values leading up to this generation
           const window = generations
             .filter((g) => g.generation <= ev.generation)
             .slice(-8)
@@ -190,24 +189,24 @@ function AgentLeaderboard({ generations }: { generations: GenerationEvent[] }) {
           return (
             <TableRow key={ev.bestAgent.id}>
               <TableCell>
-                <span className="font-mono text-xs text-text-secondary/60">{rank + 1}</span>
+                <span className="font-mono text-[12px] text-text-secondary/60">{rank + 1}</span>
               </TableCell>
-              <TableCell>
-                <span className="font-mono text-xs text-text-secondary">
+              <TableCell className="hidden sm:table-cell">
+                <span className="font-mono text-[12px] text-text-secondary">
                   {ev.bestAgent.id.slice(0, 12)}
                 </span>
               </TableCell>
               <TableCell>
-                <span className="font-mono text-xs text-accent tabular-nums">
+                <span className="font-mono text-[12px] text-accent tabular-nums">
                   {ev.topFitness.toFixed(6)}
                 </span>
               </TableCell>
               <TableCell>
-                <span className="font-mono text-xs text-text-secondary tabular-nums">
+                <span className="font-mono text-[12px] text-text-secondary tabular-nums">
                   {ev.generation}
                 </span>
               </TableCell>
-              <TableCell>
+              <TableCell className="hidden sm:table-cell">
                 <Badge variant="outline" className="text-[9px] px-1.5 py-0">
                   {ev.bestAgent.mutationOperator.slice(0, 3).toUpperCase()}
                 </Badge>
@@ -239,7 +238,7 @@ export function MetricsDashboard() {
   return (
     <div className="grid grid-cols-1 gap-4 h-full">
       {/* Row 1: Fitness chart (wide) + Mutation chart */}
-      <div className="grid grid-cols-[1fr_220px] gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-[1fr_220px] gap-4">
         <Card>
           <CardHeader className="pb-1">
             <div className="flex items-center justify-between">

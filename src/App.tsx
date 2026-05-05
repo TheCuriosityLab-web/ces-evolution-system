@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Toaster, toast } from 'sonner'
 import {
-  BarChart2, GitBranch, Activity, Cpu, Brain, Database, BookOpen, Download,
+  BarChart2, GitBranch, Activity, Cpu, Brain, Database, BookOpen, Download, MessageSquare,
 } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
@@ -14,6 +14,7 @@ import { ControlPanel }          from '@/sections/ControlPanel'
 import { IntelligencePanel }     from '@/sections/IntelligencePanel'
 import { DataUpload }            from '@/sections/DataUpload'
 import { LearningStory }         from '@/sections/LearningStory'
+import { AgentComms }            from '@/sections/AgentComms'
 import { EvolutionActionsProvider } from '@/context/evolutionActions'
 import { useEvolutionStore, selectGenerations, selectStatus } from '@/store/evolutionStore'
 import { ExportPanel } from '@/components/ExportPanel'
@@ -69,15 +70,16 @@ function ToastWatcher() {
 }
 
 // ─── Nav items shared between sidebar and mobile nav ─────────────────────────
-type TabId = 'metrics' | 'architecture' | 'feed' | 'intelligence' | 'data' | 'story'
+type TabId = 'metrics' | 'architecture' | 'feed' | 'intelligence' | 'data' | 'story' | 'comms'
 
 const NAV_ITEMS: { id: TabId; icon: React.ElementType; label: string }[] = [
-  { id: 'metrics',      icon: BarChart2, label: 'Metrics'      },
-  { id: 'architecture', icon: GitBranch, label: 'Architecture' },
-  { id: 'feed',         icon: Activity,  label: 'Feed'         },
-  { id: 'intelligence', icon: Brain,     label: 'Intelligence' },
-  { id: 'story',        icon: BookOpen,  label: 'Story'        },
-  { id: 'data',         icon: Database,  label: 'Data'         },
+  { id: 'metrics',      icon: BarChart2,     label: 'Metrics'      },
+  { id: 'architecture', icon: GitBranch,     label: 'Architecture' },
+  { id: 'feed',         icon: Activity,      label: 'Feed'         },
+  { id: 'intelligence', icon: Brain,         label: 'Intelligence' },
+  { id: 'story',        icon: BookOpen,      label: 'Story'        },
+  { id: 'data',         icon: Database,      label: 'Data'         },
+  { id: 'comms',        icon: MessageSquare, label: 'Comms'        },
 ]
 
 // ─── Desktop left sidebar ─────────────────────────────────────────────────────
@@ -147,8 +149,8 @@ function MobileTabBar({ active, onChange }: { active: TabId; onChange: (t: TabId
             onClick={() => onChange(id)}
             style={{
               fontFamily: "'IBM Plex Mono', monospace",
-              fontSize: '12px',
-              padding: '10px 16px',
+              fontSize: '11px',
+              padding: '6px 10px',
               color: active === id ? '#00F0FF' : '#A7B0B7',
               borderBottom: `2px solid ${active === id ? '#00F0FF' : 'transparent'}`,
               background: 'transparent',
@@ -275,6 +277,10 @@ export default function App() {
                       <Database className="h-3.5 w-3.5 mr-1.5" />
                       Data
                     </TabsTrigger>
+                    <TabsTrigger value="comms">
+                      <MessageSquare className="h-3.5 w-3.5 mr-1.5" />
+                      Comms
+                    </TabsTrigger>
                   </TabsList>
                 </div>
 
@@ -302,6 +308,10 @@ export default function App() {
 
                   <TabsContent value="story" className="min-h-[480px] md:h-full m-0 p-3 md:p-4 overflow-y-auto">
                     <LearningStory />
+                  </TabsContent>
+
+                  <TabsContent value="comms" className="min-h-[480px] md:h-full m-0 overflow-hidden">
+                    <AgentComms />
                   </TabsContent>
                 </div>
               </Tabs>

@@ -137,7 +137,7 @@ export function HeroSection() {
 
   return (
     <div
-      className="relative w-full h-64 overflow-hidden rounded-xl border border-accent/[0.08]"
+      className="relative w-full h-[280px] overflow-hidden rounded-xl border border-accent/[0.08]"
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
@@ -174,28 +174,31 @@ export function HeroSection() {
         </div>
 
         {/* Main heading */}
-        <h1 className="font-heading text-3xl font-bold tracking-[0.18em] text-text-primary drop-shadow-lg">
+        <h1
+          className="font-heading font-bold tracking-[0.18em] text-text-primary drop-shadow-lg"
+          style={{ fontSize: 'clamp(28px, 8vw, 64px)' }}
+        >
           COGNITO ERGO SUM
         </h1>
 
-        {/* Generation counter */}
-        <div className="mt-3 flex items-center gap-4">
+        {/* Generation counter — 2-col grid on mobile, row on desktop */}
+        <div className="mt-3 grid grid-cols-2 md:flex md:items-center gap-3 md:gap-4">
           <div className="flex flex-col items-center">
             <span className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">
               Generation
             </span>
-            <span className="font-mono text-2xl font-semibold text-accent tabular-nums">
+            <span className="font-mono text-xl md:text-2xl font-semibold text-accent tabular-nums">
               {String(generation).padStart(5, '0')}
             </span>
           </div>
 
-          <div className="h-8 w-px bg-accent/20" />
+          <div className="hidden md:block h-8 w-px bg-accent/20" />
 
           <div className="flex flex-col items-center">
             <span className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">
               Peak Fitness
             </span>
-            <span className="font-mono text-2xl font-semibold text-text-primary tabular-nums">
+            <span className="font-mono text-xl md:text-2xl font-semibold text-text-primary tabular-nums">
               {fitnessDisplay}
               <span className="text-sm text-text-secondary">%</span>
             </span>
