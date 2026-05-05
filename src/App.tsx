@@ -15,10 +15,8 @@ import { IntelligencePanel }     from '@/sections/IntelligencePanel'
 import { DataUpload }            from '@/sections/DataUpload'
 import { LearningStory }         from '@/sections/LearningStory'
 import { EvolutionActionsProvider } from '@/context/evolutionActions'
-import { useEvolutionStore, selectGenerations, selectStatus, selectUser } from '@/store/evolutionStore'
-import { AuthModal }   from '@/components/AuthModal'
+import { useEvolutionStore, selectGenerations, selectStatus } from '@/store/evolutionStore'
 import { ExportPanel } from '@/components/ExportPanel'
-import { supabase }     from '@/lib/supabase'
 
 // ─── Toast watcher ────────────────────────────────────────────────────────────
 function ToastWatcher() {
@@ -186,23 +184,7 @@ function MobileStatusDot() {
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
   const [activeTab,  setActiveTab]  = useState<TabId>('metrics')
-  const [authOpen,   setAuthOpen]   = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
-
-  const { setUser, clearUser } = useEvolutionStore()
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) setUser({ email: session.user.email ?? '', plan: 'free' })
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) setUser({ email: session.user.email ?? '', plan: 'free' })
-      else clearUser()
-    })
-
-    return () => subscription.unsubscribe()
-  }, [setUser, clearUser])
 
   return (
     <EvolutionActionsProvider>
@@ -234,11 +216,9 @@ export default function App() {
             >
               <Download className="h-3.5 w-3.5" />
             </button>
-            <HeaderAuth onSignIn={() => setAuthOpen(true)} />
           </div>
         </header>
 
-        <AuthModal   open={authOpen}   onClose={() => setAuthOpen(false)} />
         <ExportPanel open={exportOpen} onClose={() => setExportOpen(false)} />
 
         {/* ── Body ── */}
@@ -363,28 +343,6 @@ export default function App() {
         }}
       />
     </EvolutionActionsProvider>
-  )
-}
-
-// ─── Header auth controls ─────────────────────────────────────────────────────
-function HeaderAuth({ onSignIn }: { onSignIn: () => void }) {
-  const user = useEvolutionStore(selectUser)
-
-  if (!user) {
-    return (
-      <button
-        onClick={onSignIn}
-        className="font-mono text-[10px] uppercase tracking-widest px-2 md:px-3 py-1 rounded border border-accent/20 text-text-secondary hover:border-accent/50 hover:text-text-primary transition-colors"
-      >
-        Sign In
-      </button>
-    )
-  }
-
-  return (
-    <span className="font-mono text-[10px] text-text-secondary/60 max-w-[140px] truncate hidden md:inline">
-      {user.email}
-    </span>
   )
 }
 

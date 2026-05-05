@@ -21,8 +21,6 @@ interface EvolutionState {
   targetColumn: string | null
   featureColumns: string[]
 
-  user: { email: string; plan: 'free' | 'pro' | 'team' } | null
-
   // actions
   appendGeneration: (event: GenerationEvent) => void
   setStatus: (status: EvolutionStatus) => void
@@ -34,8 +32,6 @@ interface EvolutionState {
   setCSVData: (data: Record<string, string>[] | null) => void
   setTargetColumn: (col: string | null) => void
   setFeatureColumns: (cols: string[]) => void
-  setUser: (user: { email: string; plan: 'free' | 'pro' | 'team' } | null) => void
-  clearUser: () => void
   reset: () => void
 }
 
@@ -60,7 +56,6 @@ export const useEvolutionStore = create<EvolutionState>((set, get) => ({
   csvData: null,
   targetColumn: null,
   featureColumns: [],
-  user: null,
 
   appendGeneration: (event) =>
     set((state) => {
@@ -95,8 +90,6 @@ export const useEvolutionStore = create<EvolutionState>((set, get) => ({
   setCSVData: (data) => set({ csvData: data }),
   setTargetColumn: (col) => set({ targetColumn: col }),
   setFeatureColumns: (cols) => set({ featureColumns: cols }),
-  setUser: (user) => set({ user }),
-  clearUser: () => set({ user: null }),
 
   reset: () =>
     set({
@@ -119,4 +112,3 @@ export const selectSelectedAgent = (s: EvolutionState) => s.selectedAgent
 export const selectConfig = (s: EvolutionState) => s.config
 export const selectCurrentGeneration = (s: EvolutionState) => s.currentGeneration
 export const selectBestFitnessEver = (s: EvolutionState) => s.bestFitnessEver
-export const selectUser = (s: EvolutionState) => s.user
