@@ -78,8 +78,8 @@ const NAV_ITEMS: { id: TabId; icon: React.ElementType; label: string }[] = [
   { id: 'architecture', icon: GitBranch, label: 'Architecture' },
   { id: 'feed',         icon: Activity,  label: 'Feed'         },
   { id: 'intelligence', icon: Brain,     label: 'Intelligence' },
-  { id: 'data',         icon: Database,  label: 'Data'         },
   { id: 'story',        icon: BookOpen,  label: 'Story'        },
+  { id: 'data',         icon: Database,  label: 'Data'         },
 ]
 
 // ─── Desktop left sidebar ─────────────────────────────────────────────────────
@@ -266,8 +266,11 @@ export default function App() {
                 className="flex flex-col md:h-full"
               >
                 {/* Desktop tab bar — hidden on mobile (MobileTabBar handles it) */}
-                <div className="hidden md:block overflow-x-auto mb-3 pb-px">
-                  <TabsList className="flex w-max md:w-auto shrink-0">
+                <div className="hidden md:block mb-3 pb-px" style={{ overflowX: 'auto', scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}>
+                  <TabsList
+                    className="flex shrink-0"
+                    style={{ whiteSpace: 'nowrap', maxWidth: '100%' }}
+                  >
                     <TabsTrigger value="metrics">
                       <BarChart2 className="h-3.5 w-3.5 mr-1.5" />
                       Metrics
@@ -284,13 +287,13 @@ export default function App() {
                       <Brain className="h-3.5 w-3.5 mr-1.5" />
                       Intelligence
                     </TabsTrigger>
-                    <TabsTrigger value="data">
-                      <Database className="h-3.5 w-3.5 mr-1.5" />
-                      Data
-                    </TabsTrigger>
                     <TabsTrigger value="story">
                       <BookOpen className="h-3.5 w-3.5 mr-1.5" />
                       Story
+                    </TabsTrigger>
+                    <TabsTrigger value="data">
+                      <Database className="h-3.5 w-3.5 mr-1.5" />
+                      Data
                     </TabsTrigger>
                   </TabsList>
                 </div>
