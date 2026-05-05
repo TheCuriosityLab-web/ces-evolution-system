@@ -236,7 +236,7 @@ export default function App() {
             <MobileTabBar active={activeTab} onChange={setActiveTab} />
 
             {/* Hero */}
-            <div className="px-3 md:px-4 pt-3 md:pt-4 pb-2 md:pb-3 shrink-0">
+            <div className="w-full shrink-0 relative overflow-hidden h-[280px] md:h-screen">
               <HeroSection />
             </div>
 
