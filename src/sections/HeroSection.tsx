@@ -1,5 +1,5 @@
-import { useRef, useMemo } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useRef, useMemo, useEffect, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import {
@@ -7,38 +7,51 @@ import {
   selectStatus,
   selectCurrentGeneration,
   selectBestFitnessEver,
-  selectSelectedAgent,
 } from '@/store/evolutionStore'
 
-const PARTICLE_COUNT = 800
+function useParticleCount() {
+  const [count, setCount] = useState(
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 800 : 2000
+  )
+  useEffect(() => {
+    const update = () => setCount(window.innerWidth < 768 ? 800 : 2000)
+    window.addEventListener('resize', update)
+    return () => window.removeEventListener('resize', update)
+  }, [])
+  return count
+}
+
+// ─── Camera Parallax ──────────────────────────────────────────────────────────
+function CameraParallax({ mouse }: { mouse: React.MutableRefObject<[number, number]> }) {
+  const { camera } = useThree()
+  useFrame(() => {
+    camera.position.x += (mouse.current[0] * 0.8 - camera.position.x) * 0.04
+    camera.position.y += (mouse.current[1] * 0.5 - camera.position.y) * 0.04
+    camera.lookAt(0, 0, 0)
+  })
+  return null
+}
 
 // ─── Particle Field ──────────────────────────────────────────────────────────
-function ParticleField({ fitness, isEvolving }: { fitness: number; isEvolving: boolean }) {
+function ParticleField({ count }: { count: number }) {
   const pointsRef = useRef<THREE.Points>(null)
 
-  // Stable Float32Arrays — never recreated
-  const posArr = useMemo(() => {
-    const arr = new Float32Array(PARTICLE_COUNT * 3)
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      // Distribute on a flattened sphere shell
-      const theta = Math.random() * Math.PI * 2
-      const phi   = Math.acos(2 * Math.random() - 1)
-      const r     = 2.5 + Math.random() * 3.5
-      arr[i * 3]     = r * Math.sin(phi) * Math.cos(theta)
-      arr[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta) * 0.55
-      arr[i * 3 + 2] = r * Math.cos(phi) * 0.35
+  const { posArr, baseArr } = useMemo(() => {
+    const posArr  = new Float32Array(count * 3)
+    const baseArr = new Float32Array(count * 3)
+    for (let i = 0; i < count; i++) {
+      const x = (Math.random() * 2 - 1) * 15   // -15 to 15
+      const y = (Math.random() * 2 - 1) * 8    // -8 to 8
+      const z = Math.random() * 15 - 10         // -10 to 5
+      posArr[i * 3]      = x
+      posArr[i * 3 + 1]  = y
+      posArr[i * 3 + 2]  = z
+      baseArr[i * 3]     = x
+      baseArr[i * 3 + 1] = y
+      baseArr[i * 3 + 2] = z
     }
-    return arr
-  }, [])
-
-  const phaseArr = useMemo(() => {
-    const arr = new Float32Array(PARTICLE_COUNT * 2)
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      arr[i * 2]     = Math.random() * Math.PI * 2
-      arr[i * 2 + 1] = Math.random() * Math.PI * 2
-    }
-    return arr
-  }, [])
+    return { posArr, baseArr }
+  }, [count])
 
   const geometry = useMemo(() => {
     const geo = new THREE.BufferGeometry()
@@ -48,25 +61,13 @@ function ParticleField({ fitness, isEvolving }: { fitness: number; isEvolving: b
 
   useFrame(({ clock }) => {
     if (!pointsRef.current) return
-    const t       = clock.getElapsedTime()
-    const pos     = geometry.attributes.position.array as Float32Array
-    // Attraction ramps up with fitness — best fitness clusters everything to centre
-    const attract = isEvolving ? fitness * 0.018 : 0.002
+    const time = clock.getElapsedTime() * 1000  // ms
+    const pos  = geometry.attributes.position.array as Float32Array
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const px  = phaseArr[i * 2]
-      const py  = phaseArr[i * 2 + 1]
+    for (let i = 0; i < count; i++) {
       const idx = i * 3
-
-      // Individual drift: slow sinusoidal wander
-      pos[idx]     += Math.sin(t * 0.22 + px) * 0.0025
-      pos[idx + 1] += Math.cos(t * 0.28 + py) * 0.0025
-      pos[idx + 2] += Math.sin(t * 0.18 + px + py) * 0.0015
-
-      // Centripetal attraction — pulls toward origin as fitness improves
-      pos[idx]     -= pos[idx]     * attract
-      pos[idx + 1] -= pos[idx + 1] * attract
-      pos[idx + 2] -= pos[idx + 2] * attract
+      pos[idx]     += Math.sin(time * 0.001 * (i + 1)) * 0.001
+      pos[idx + 1] += Math.cos(time * 0.0008 * (i + 1)) * 0.001
     }
 
     geometry.attributes.position.needsUpdate = true
@@ -75,10 +76,10 @@ function ParticleField({ fitness, isEvolving }: { fitness: number; isEvolving: b
   return (
     <points ref={pointsRef} geometry={geometry}>
       <pointsMaterial
-        size={0.055}
+        size={0.045}
         color="#00F0FF"
         transparent
-        opacity={0.8}
+        opacity={0.75}
         sizeAttenuation
         depthWrite={false}
       />
@@ -87,12 +88,19 @@ function ParticleField({ fitness, isEvolving }: { fitness: number; isEvolving: b
 }
 
 // ─── Scene ───────────────────────────────────────────────────────────────────
-function Scene({ fitness, isEvolving }: { fitness: number; isEvolving: boolean }) {
+function Scene({
+  count,
+  mouse,
+}: {
+  count: number
+  mouse: React.MutableRefObject<[number, number]>
+}) {
   return (
     <>
       <color attach="background" args={['#07080A']} />
       <ambientLight intensity={0.1} />
-      <ParticleField fitness={fitness} isEvolving={isEvolving} />
+      <CameraParallax mouse={mouse} />
+      <ParticleField count={count} />
       <EffectComposer>
         <Bloom
           luminanceThreshold={0.05}
@@ -110,26 +118,44 @@ export function HeroSection() {
   const status     = useEvolutionStore(selectStatus)
   const generation = useEvolutionStore(selectCurrentGeneration)
   const bestEver   = useEvolutionStore(selectBestFitnessEver)
-  const agent      = useEvolutionStore(selectSelectedAgent)
-  const isEvolving = status === 'EVOLVING'
-
-  const fitness    = agent?.fitness ?? 0
+  const isEvolving     = status === 'EVOLVING'
   const fitnessDisplay = (bestEver * 100).toFixed(4)
+  const count          = useParticleCount()
+  const mouse          = useRef<[number, number]>([0, 0])
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect()
+    mouse.current = [
+      ((e.clientX - rect.left) / rect.width  - 0.5) * 2,
+      -((e.clientY - rect.top)  / rect.height - 0.5) * 2,
+    ]
+  }
+
+  const handleMouseLeave = () => {
+    mouse.current = [0, 0]
+  }
 
   return (
-    <div className="relative w-full h-64 overflow-hidden rounded-xl border border-accent/[0.08]">
-      {/* Three.js canvas */}
+    <div
+      className="relative w-full h-64 overflow-hidden rounded-xl border border-accent/[0.08]"
+      onMouseMove={handleMouseMove}
+      onMouseLeave={handleMouseLeave}
+    >
+      {/* Three.js canvas — fills hero section */}
       <Canvas
-        className="absolute inset-0"
-        camera={{ position: [0, 0, 7], fov: 58 }}
+        style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0 }}
+        camera={{ position: [0, 0, 8], fov: 58 }}
         dpr={[1, 1.5]}
         gl={{ antialias: false, alpha: false }}
       >
-        <Scene fitness={fitness} isEvolving={isEvolving} />
+        <Scene count={count} mouse={mouse} />
       </Canvas>
 
-      {/* Overlay — pointer-events-none so canvas stays interactive */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none">
+      {/* Overlay — z-index 10, pointer-events-none */}
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none"
+        style={{ zIndex: 10 }}
+      >
         {/* Top label */}
         <p className="absolute top-3 left-4 font-mono text-[10px] tracking-[0.25em] text-accent/60 uppercase">
           CES // Evolution System

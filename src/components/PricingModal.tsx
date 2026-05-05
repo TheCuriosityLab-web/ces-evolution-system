@@ -1,4 +1,5 @@
-import { Check } from 'lucide-react'
+import { useState } from 'react'
+import { Check, Loader2 } from 'lucide-react'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -6,20 +7,40 @@ import { PLANS, stripePromise, type PlanKey } from '@/lib/stripe'
 
 const MONO: React.CSSProperties = { fontFamily: "'IBM Plex Mono', monospace" }
 
+// TODO: replace with your real Stripe Payment Link URLs
+const PAYMENT_LINKS: Partial<Record<PlanKey, string>> = {
+  PRO:  'https://buy.stripe.com/test_YOUR_PRO_LINK',
+  TEAM: 'https://buy.stripe.com/test_YOUR_TEAM_LINK',
+}
+
 interface PricingModalProps {
   open: boolean
   onClose: () => void
 }
 
-async function handleUpgrade(planKey: PlanKey) {
-  if (planKey === 'FREE') return
-  // Modern Stripe.js requires a server-side session ID.
-  // Your backend should create a Checkout Session and return its ID,
-  // then call: (await stripePromise)?.redirectToCheckout({ sessionId })
-  console.log(`Upgrade to ${planKey} — wire up your /api/checkout endpoint`)
-}
-
 export function PricingModal({ open, onClose }: PricingModalProps) {
+  const [loadingPlan, setLoadingPlan] = useState<PlanKey | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleUpgrade = async (key: PlanKey) => {
+    if (key === 'FREE') return
+    setLoadingPlan(key)
+    setError(null)
+    try {
+      const stripe = await stripePromise
+      if (!stripe) {
+        setError('Failed to load payment processor — please refresh and try again.')
+        return
+      }
+      const link = PAYMENT_LINKS[key]
+      if (link) window.open(link, '_blank')
+    } catch {
+      setError('Something went wrong — please try again.')
+    } finally {
+      setLoadingPlan(null)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-3xl" style={{ background: '#0E1116', ...MONO }}>
@@ -34,6 +55,20 @@ export function PricingModal({ open, onClose }: PricingModalProps) {
             Upgrade to unlock advanced evolution features.
           </p>
         </DialogHeader>
+
+        {error && (
+          <p
+            className="text-[11px] px-3 py-2 rounded"
+            style={{
+              background:  'rgba(255,60,60,0.10)',
+              color:       '#FF6B6B',
+              border:      '1px solid rgba(255,60,60,0.25)',
+              ...MONO,
+            }}
+          >
+            {error}
+          </p>
+        )}
 
         <div className="grid grid-cols-3 gap-4">
           {(Object.entries(PLANS) as [PlanKey, typeof PLANS[PlanKey]][]).map(([key, plan]) => {
@@ -101,9 +136,9 @@ export function PricingModal({ open, onClose }: PricingModalProps) {
 
                 {/* CTA button */}
                 <button
-                  disabled={isFree}
+                  disabled={isFree || loadingPlan !== null}
                   onClick={() => handleUpgrade(key)}
-                  className="w-full py-2 rounded text-[11px] font-bold tracking-widest uppercase transition-all duration-150 disabled:opacity-40 disabled:cursor-default"
+                  className="w-full py-2 rounded text-[11px] font-bold tracking-widest uppercase transition-all duration-150 disabled:opacity-40 disabled:cursor-default flex items-center justify-center gap-1.5"
                   style={{
                     background:  isPro ? '#00F0FF' : 'transparent',
                     color:       isPro ? '#07080A' : '#A7B0B7',
@@ -111,7 +146,7 @@ export function PricingModal({ open, onClose }: PricingModalProps) {
                     ...MONO,
                   }}
                   onMouseEnter={(e) => {
-                    if (!isFree && !isPro) {
+                    if (!isFree && !isPro && loadingPlan === null) {
                       e.currentTarget.style.borderColor = '#00F0FF'
                       e.currentTarget.style.color = '#00F0FF'
                     }
@@ -123,6 +158,9 @@ export function PricingModal({ open, onClose }: PricingModalProps) {
                     }
                   }}
                 >
+                  {loadingPlan === key && (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  )}
                   {isFree ? 'Current plan' : `Upgrade to ${plan.name}`}
                 </button>
               </div>
