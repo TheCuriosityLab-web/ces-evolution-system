@@ -1,222 +1,415 @@
 import { useRef, useMemo, useEffect, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { Line } from '@react-three/drei'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import * as THREE from 'three'
 import {
   useEvolutionStore,
+  selectGenerations,
   selectStatus,
   selectCurrentGeneration,
   selectBestFitnessEver,
 } from '@/store/evolutionStore'
+import type { GenerationEvent } from '@/types/evolution'
 
-function useParticleCount() {
-  const [count, setCount] = useState(
-    typeof window !== 'undefined' && window.innerWidth < 768 ? 800 : 2000
-  )
-  useEffect(() => {
-    const update = () => setCount(window.innerWidth < 768 ? 800 : 2000)
-    window.addEventListener('resize', update)
-    return () => window.removeEventListener('resize', update)
-  }, [])
-  return count
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type RobotState = 'ELITE' | 'MUTATING' | 'DEAD' | 'NEW' | 'NORMAL'
+type ConnType   = 'crossover' | 'mutation' | 'elite'
+
+interface Robot {
+  id:       number
+  position: [number, number, number]
+  fitness:  number
+  state:    RobotState
 }
 
-// ─── Camera Parallax ──────────────────────────────────────────────────────────
-function CameraParallax({ mouse }: { mouse: React.MutableRefObject<[number, number]> }) {
+interface Conn {
+  key:  string
+  from: [number, number, number]
+  to:   [number, number, number]
+  type: ConnType
+  born: number          // performance.now() when spawned
+}
+
+// ─── Visual config ────────────────────────────────────────────────────────────
+
+const ROBOT_COLORS: Record<RobotState, string> = {
+  ELITE:    '#00F0FF',
+  MUTATING: '#FFB800',
+  DEAD:     '#1A1E2B',
+  NEW:      '#00D4EC',
+  NORMAL:   '#0088A8',
+}
+
+const CONN_COLORS: Record<ConnType, string> = {
+  crossover: '#B8A0FF',
+  mutation:  '#FFB800',
+  elite:     '#00FF88',
+}
+
+const CONN_LIFE_MS = 2000
+
+// ─── Deterministic robot positions ───────────────────────────────────────────
+
+function sinHash(v: number): number {
+  const x = Math.sin(v * 127.1 + 311.7) * 43758.5453
+  return x - Math.floor(x)
+}
+
+const POS50: [number, number, number][] = Array.from({ length: 50 }, (_, i) => [
+  sinHash(i * 3 + 0) * 20 - 10,   // x: -10 … 10
+  sinHash(i * 3 + 1) * 12 - 6,    // y:  -6 …  6
+  sinHash(i * 3 + 2) * 8  - 5,    // z:  -5 …  3
+])
+
+// ─── Data builders ────────────────────────────────────────────────────────────
+
+function buildRobots(gens: GenerationEvent[], n: number): Robot[] {
+  const ev  = gens[gens.length - 1]
+  const eN  = Math.ceil(n * 0.08)
+  const dN  = Math.ceil(n * 0.12)
+  const mN  = ev && ev.delta > 0.002 ? Math.ceil(n * 0.14) : 0
+  const nwN = ev && ev.delta > 0     ? Math.ceil(n * 0.09) : 0
+
+  return POS50.slice(0, n).map((pos, i) => {
+    const rank    = i / Math.max(1, n - 1)
+    const fitness = ev
+      ? Math.max(0.02, ev.worstFitness + (ev.topFitness - ev.worstFitness) * (1 - rank))
+      : 0.1 + (1 - rank) * 0.5
+
+    let state: RobotState = 'NORMAL'
+    if      (i < eN)                 state = 'ELITE'
+    else if (i >= n - dN)            state = 'DEAD'
+    else if (i < eN + mN)            state = 'MUTATING'
+    else if (i < eN + mN + nwN)      state = 'NEW'
+
+    return { id: i, position: pos, fitness, state }
+  })
+}
+
+function buildConns(ev: GenerationEvent, n: number): Conn[] {
+  const now  = performance.now()
+  const out: Conn[] = []
+  const eN   = Math.ceil(n * 0.08)
+  const g    = ev.generation
+
+  // Elite propagation (green)
+  for (let i = 0; i < 2; i++) {
+    const t = eN + Math.floor(sinHash(g * 7 + i) * (n - eN))
+    out.push({ key: `${g}-e${i}`, from: POS50[i % eN], to: POS50[t % n], type: 'elite',     born: now + i * 100 })
+  }
+
+  // Mutation (amber)
+  if (ev.delta > 0) {
+    const cnt = Math.min(5, 1 + Math.floor(ev.delta * 60))
+    for (let i = 0; i < cnt; i++) {
+      const a = Math.floor(sinHash(g * 13 + i * 3) * n)
+      const b = Math.floor(sinHash(g * 17 + i * 5) * n)
+      if (a !== b) out.push({ key: `${g}-m${i}`, from: POS50[a], to: POS50[b], type: 'mutation', born: now + 200 + i * 130 })
+    }
+  }
+
+  // Crossover (purple)
+  for (let i = 0; i < 3; i++) {
+    const a = Math.floor(sinHash(g * 23 + i * 7)  * (n / 2))
+    const b = Math.floor(sinHash(g * 29 + i * 11) * (n / 2)) + Math.floor(n / 2)
+    out.push({ key: `${g}-c${i}`, from: POS50[a % n], to: POS50[b % n], type: 'crossover', born: now + 450 + i * 180 })
+  }
+
+  return out
+}
+
+// ─── Shared geometry (module-level, never recreated) ─────────────────────────
+
+const SPHERE_GEO = new THREE.SphereGeometry(1, 11, 11)
+const DOT_GEO    = new THREE.SphereGeometry(1,  7,  7)
+
+// ─── Camera orbit + mouse parallax ───────────────────────────────────────────
+
+function CameraOrbit({ mouse }: { mouse: React.MutableRefObject<[number, number]> }) {
   const { camera } = useThree()
-  useFrame(() => {
-    camera.position.x += (mouse.current[0] * 0.8 - camera.position.x) * 0.04
-    camera.position.y += (mouse.current[1] * 0.5 - camera.position.y) * 0.04
+  const angle = useRef(0)
+
+  useFrame((_, dt) => {
+    angle.current += dt * 0.10
+
+    const r  = 24
+    const tx = Math.sin(angle.current) * r + mouse.current[0] * 1.5
+    const ty = 4 + mouse.current[1] * 1.2
+    const tz = Math.cos(angle.current) * r
+
+    camera.position.x += (tx - camera.position.x) * 0.025
+    camera.position.y += (ty - camera.position.y) * 0.025
+    camera.position.z += (tz - camera.position.z) * 0.025
     camera.lookAt(0, 0, 0)
   })
+
   return null
 }
 
-// ─── Particle Field ──────────────────────────────────────────────────────────
-function ParticleField({ count }: { count: number }) {
-  const pointsRef = useRef<THREE.Points>(null)
+// ─── Robot sphere ─────────────────────────────────────────────────────────────
 
-  const { posArr, baseArr } = useMemo(() => {
-    const posArr  = new Float32Array(count * 3)
-    const baseArr = new Float32Array(count * 3)
-    for (let i = 0; i < count; i++) {
-      const x = (Math.random() * 2 - 1) * 15   // -15 to 15
-      const y = (Math.random() * 2 - 1) * 8    // -8 to 8
-      const z = Math.random() * 15 - 10         // -10 to 5
-      posArr[i * 3]      = x
-      posArr[i * 3 + 1]  = y
-      posArr[i * 3 + 2]  = z
-      baseArr[i * 3]     = x
-      baseArr[i * 3 + 1] = y
-      baseArr[i * 3 + 2] = z
-    }
-    return { posArr, baseArr }
-  }, [count])
-
-  const geometry = useMemo(() => {
-    const geo = new THREE.BufferGeometry()
-    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3))
-    return geo
-  }, [posArr])
+function RobotNode({ robot }: { robot: Robot }) {
+  const meshRef = useRef<THREE.Mesh>(null)
+  const growRef = useRef(robot.state === 'NEW' ? 0.15 : 1)
+  const prevSt  = useRef<RobotState>(robot.state)
 
   useFrame(({ clock }) => {
-    if (!pointsRef.current) return
-    const time = clock.getElapsedTime() * 1000  // ms
-    const pos  = geometry.attributes.position.array as Float32Array
+    if (!meshRef.current) return
 
-    for (let i = 0; i < count; i++) {
-      const idx = i * 3
-      pos[idx]     += Math.sin(time * 0.001 * (i + 1)) * 0.001
-      pos[idx + 1] += Math.cos(time * 0.0008 * (i + 1)) * 0.001
-    }
+    if (robot.state === 'NEW' && prevSt.current !== 'NEW') growRef.current = 0.15
+    prevSt.current = robot.state
 
-    geometry.attributes.position.needsUpdate = true
+    if (robot.state === 'NEW') growRef.current = Math.min(1, growRef.current + 0.022)
+
+    const base = 0.1 + robot.fitness * 0.32
+    let s = growRef.current * base
+    if (robot.state === 'ELITE') s *= 1 + Math.sin(clock.elapsedTime * 2.5 + robot.id * 0.7) * 0.15
+
+    meshRef.current.scale.setScalar(s)
   })
 
+  const base  = 0.1 + robot.fitness * 0.32
+  const initS = (robot.state === 'NEW' ? 0.15 : 1) * base
+  const isDead = robot.state === 'DEAD'
+
   return (
-    <points ref={pointsRef} geometry={geometry}>
-      <pointsMaterial
-        size={0.045}
-        color="#00F0FF"
-        transparent
-        opacity={0.75}
-        sizeAttenuation
-        depthWrite={false}
+    <mesh ref={meshRef} position={robot.position} scale={initS}>
+      <primitive object={SPHERE_GEO} attach="geometry" />
+      <meshStandardMaterial
+        color={ROBOT_COLORS[robot.state]}
+        emissive={ROBOT_COLORS[robot.state]}
+        emissiveIntensity={isDead ? 0 : robot.state === 'ELITE' ? 3.5 : 1.6}
+        roughness={0.15}
+        metalness={0.55}
+        transparent={isDead}
+        opacity={isDead ? 0.28 : 1}
       />
-    </points>
+    </mesh>
   )
 }
 
-// ─── Scene ───────────────────────────────────────────────────────────────────
-function Scene({
-  count,
-  mouse,
-}: {
-  count: number
+// ─── Connection line + traveling dot ─────────────────────────────────────────
+
+function ConnLine({ conn }: { conn: Conn }) {
+  const { from, to, type, born } = conn
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const lineRef   = useRef<any>(null)
+  const dotRef    = useRef<THREE.Mesh>(null)
+  const dotMatRef = useRef<THREE.MeshStandardMaterial>(null)
+
+  const fromV = useMemo(() => new THREE.Vector3(from[0], from[1], from[2]), [])
+  const toV   = useMemo(() => new THREE.Vector3(to[0],   to[1],   to[2]),   [])
+  const tmp   = useMemo(() => new THREE.Vector3(), [])
+
+  useFrame(() => {
+    const age = performance.now() - born
+    if (age < 0) return
+
+    const t  = Math.min(1, age / CONN_LIFE_MS)
+    const op = Math.max(0,
+      t < 0.12 ? t / 0.12
+      : t < 0.72 ? 1
+      : 1 - (t - 0.72) / 0.28
+    ) * 0.7
+
+    if (lineRef.current?.material) {
+      lineRef.current.material.opacity = op
+    }
+
+    if (dotRef.current && dotMatRef.current) {
+      tmp.lerpVectors(fromV, toV, Math.min(1, t * 1.4))
+      dotRef.current.position.copy(tmp)
+      dotMatRef.current.opacity = Math.min(1, op * 1.3)
+    }
+  })
+
+  return (
+    <>
+      <Line
+        ref={lineRef}
+        points={[from, to]}
+        color={CONN_COLORS[type]}
+        lineWidth={type === 'elite' ? 1.8 : 1.2}
+        transparent
+        opacity={0}
+      />
+      <mesh ref={dotRef} position={from} scale={0.09}>
+        <primitive object={DOT_GEO} attach="geometry" />
+        <meshStandardMaterial
+          ref={dotMatRef}
+          color={CONN_COLORS[type]}
+          emissive={CONN_COLORS[type]}
+          emissiveIntensity={4}
+          transparent
+          opacity={0}
+        />
+      </mesh>
+    </>
+  )
+}
+
+// ─── Scene ────────────────────────────────────────────────────────────────────
+
+function Scene({ mouse, n }: {
   mouse: React.MutableRefObject<[number, number]>
+  n: number
 }) {
+  const generations = useEvolutionStore(selectGenerations)
+  const [conns, setConns] = useState<Conn[]>([])
+  const prevLen = useRef(0)
+
+  const robots = useMemo(() => buildRobots(generations, n), [generations, n])
+
+  useEffect(() => {
+    if (generations.length <= prevLen.current) return
+    const latest = generations[generations.length - 1]
+    prevLen.current = generations.length
+
+    const fresh = buildConns(latest, n)
+    const now   = performance.now()
+
+    setConns(prev => [
+      ...prev.filter(c => now - c.born < CONN_LIFE_MS),
+      ...fresh,
+    ].slice(-18))
+  }, [generations.length, n])
+
   return (
     <>
       <color attach="background" args={['#07080A']} />
-      <ambientLight intensity={0.1} />
-      <CameraParallax mouse={mouse} />
-      <ParticleField count={count} />
+      <ambientLight intensity={0.06} />
+      <pointLight position={[0,  6, 10]} intensity={1.0} color="#00F0FF" decay={2} />
+      <pointLight position={[0, -4, -8]} intensity={0.3} color="#8060FF" decay={2} />
+
+      <CameraOrbit mouse={mouse} />
+
+      {robots.map((r, i) => <RobotNode key={i} robot={r} />)}
+      {conns.map(c => <ConnLine key={c.key} conn={c} />)}
+
       <EffectComposer>
-        <Bloom
-          luminanceThreshold={0.05}
-          luminanceSmoothing={0.85}
-          intensity={1.8}
-          height={256}
-        />
+        <Bloom luminanceThreshold={0.1} luminanceSmoothing={0.85} intensity={2.8} height={256} />
       </EffectComposer>
     </>
   )
 }
 
-// ─── HeroSection ─────────────────────────────────────────────────────────────
+// ─── Robot count hook (20 on mobile, 50 on desktop) ──────────────────────────
+
+function useRobotCount() {
+  const [n, setN] = useState(
+    typeof window !== 'undefined' && window.innerWidth < 768 ? 20 : 50
+  )
+  useEffect(() => {
+    const upd = () => setN(window.innerWidth < 768 ? 20 : 50)
+    window.addEventListener('resize', upd)
+    return () => window.removeEventListener('resize', upd)
+  }, [])
+  return n
+}
+
+// ─── HeroSection (export) ─────────────────────────────────────────────────────
+
 export function HeroSection() {
   const status     = useEvolutionStore(selectStatus)
   const generation = useEvolutionStore(selectCurrentGeneration)
   const bestEver   = useEvolutionStore(selectBestFitnessEver)
-  const isEvolving     = status === 'EVOLVING'
-  const fitnessDisplay = (bestEver * 100).toFixed(4)
-  const count          = useParticleCount()
-  const mouse          = useRef<[number, number]>([0, 0])
-
-  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect()
-    mouse.current = [
-      ((e.clientX - rect.left) / rect.width  - 0.5) * 2,
-      -((e.clientY - rect.top)  / rect.height - 0.5) * 2,
-    ]
-  }
-
-  const handleMouseLeave = () => {
-    mouse.current = [0, 0]
-  }
+  const robotCount = useRobotCount()
+  const mouse      = useRef<[number, number]>([0, 0])
 
   return (
     <div
-      className="relative w-full h-[280px] overflow-hidden rounded-xl border border-accent/[0.08]"
-      onMouseMove={handleMouseMove}
-      onMouseLeave={handleMouseLeave}
+      className="relative w-full h-[280px] rounded-xl overflow-hidden border border-accent/[0.08]"
+      onMouseMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect()
+        mouse.current = [
+          ((e.clientX - r.left) / r.width  - 0.5) * 2,
+          -((e.clientY - r.top) / r.height - 0.5) * 2,
+        ]
+      }}
+      onMouseLeave={() => { mouse.current = [0, 0] }}
     >
-      {/* Three.js canvas — fills hero section */}
+      {/* 3D canvas fills the hero */}
       <Canvas
-        style={{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0 }}
-        camera={{ position: [0, 0, 8], fov: 58 }}
+        style={{ position: 'absolute', inset: 0 }}
+        camera={{ position: [0, 4, 24], fov: 60 }}
         dpr={[1, 1.5]}
         gl={{ antialias: false, alpha: false }}
       >
-        <Scene count={count} mouse={mouse} />
+        <Scene mouse={mouse} n={robotCount} />
       </Canvas>
 
-      {/* Overlay — z-index 10, pointer-events-none */}
-      <div
-        className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none"
-        style={{ zIndex: 10 }}
-      >
-        {/* Top label */}
+      {/* Overlay — text on top of 3D scene */}
+      <div className="absolute inset-0 pointer-events-none select-none" style={{ zIndex: 10 }}>
+
+        {/* Top-left label */}
         <p className="absolute top-3 left-4 font-mono text-[10px] tracking-[0.25em] text-accent/60 uppercase">
           CES // Evolution System
         </p>
 
-        {/* Status badge top-right */}
+        {/* Top-right status */}
         <div className="absolute top-3 right-4 flex items-center gap-1.5">
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              isEvolving ? 'bg-accent animate-pulse' : 'bg-text-secondary/40'
-            }`}
-          />
+          <span className={`h-1.5 w-1.5 rounded-full ${
+            status === 'EVOLVING' ? 'bg-accent animate-pulse shadow-[0_0_6px_rgba(0,240,255,0.7)]' : 'bg-text-secondary/40'
+          }`} />
           <span className="font-mono text-[10px] tracking-widest text-text-secondary uppercase">
             {status}
           </span>
         </div>
 
-        {/* Main heading */}
-        <h1
-          className="font-heading font-bold tracking-[0.18em] text-text-primary drop-shadow-lg"
-          style={{ fontSize: 'clamp(28px, 8vw, 64px)' }}
-        >
-          COGNITO ERGO SUM
-        </h1>
+        {/* Center: heading + stats */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <h1
+            className="font-heading font-bold tracking-[0.18em]"
+            style={{
+              fontSize: 'clamp(26px, 7.5vw, 60px)',
+              color: 'rgba(244,246,248,0.92)',
+              textShadow: '0 0 32px rgba(0,240,255,0.35), 0 2px 4px rgba(0,0,0,0.6)',
+            }}
+          >
+            COGNITO ERGO SUM
+          </h1>
 
-        {/* Generation counter — 2-col grid on mobile, row on desktop */}
-        <div className="mt-3 grid grid-cols-2 md:flex md:items-center gap-3 md:gap-4">
-          <div className="flex flex-col items-center">
-            <span className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">
-              Generation
-            </span>
-            <span className="font-mono text-xl md:text-2xl font-semibold text-accent tabular-nums">
-              {String(generation).padStart(5, '0')}
-            </span>
-          </div>
+          <div className="mt-3 grid grid-cols-2 md:flex md:items-center gap-3 md:gap-6">
+            <div className="flex flex-col items-center">
+              <span className="font-mono text-[9px] text-text-secondary/70 uppercase tracking-widest">
+                Generation
+              </span>
+              <span
+                className="font-mono text-lg md:text-2xl font-semibold tabular-nums"
+                style={{ color: '#00F0FF', textShadow: '0 0 10px rgba(0,240,255,0.6)' }}
+              >
+                {String(generation).padStart(5, '0')}
+              </span>
+            </div>
 
-          <div className="hidden md:block h-8 w-px bg-accent/20" />
+            <div className="hidden md:block h-8 w-px bg-accent/20" />
 
-          <div className="flex flex-col items-center">
-            <span className="font-mono text-[10px] text-text-secondary uppercase tracking-widest">
-              Peak Fitness
-            </span>
-            <span className="font-mono text-xl md:text-2xl font-semibold text-text-primary tabular-nums">
-              {fitnessDisplay}
-              <span className="text-sm text-text-secondary">%</span>
-            </span>
+            <div className="flex flex-col items-center">
+              <span className="font-mono text-[9px] text-text-secondary/70 uppercase tracking-widest">
+                Peak Fitness
+              </span>
+              <span className="font-mono text-lg md:text-2xl font-semibold text-text-primary tabular-nums">
+                {(bestEver * 100).toFixed(4)}
+                <span className="text-sm text-text-secondary">%</span>
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Fitness progress bar */}
+        {/* Bottom fitness bar */}
         <div className="absolute bottom-4 left-6 right-6">
           <div className="h-px bg-accent/10 rounded-full overflow-hidden">
             <div
-              className="h-full bg-accent transition-all duration-700 ease-out rounded-full"
+              className="h-full bg-accent transition-all duration-700 rounded-full"
               style={{ width: `${bestEver * 100}%`, boxShadow: '0 0 8px rgba(0,240,255,0.6)' }}
             />
           </div>
           <div className="flex justify-between mt-1">
-            <span className="font-mono text-[9px] text-text-secondary/50">0%</span>
-            <span className="font-mono text-[9px] text-accent/60">FITNESS LANDSCAPE</span>
-            <span className="font-mono text-[9px] text-text-secondary/50">100%</span>
+            <span className="font-mono text-[9px] text-text-secondary/40">0%</span>
+            <span className="font-mono text-[9px] text-accent/50">FITNESS LANDSCAPE</span>
+            <span className="font-mono text-[9px] text-text-secondary/40">100%</span>
           </div>
         </div>
       </div>
